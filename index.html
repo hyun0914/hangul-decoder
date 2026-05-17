@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>한글 디코더</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Noto+Sans+KR:wght@400;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050a0f;
+    --surface: #0a1520;
+    --border: #0d3d5c;
+    --glow: #00d4ff;
+    --glow2: #00ff9d;
+    --glow3: #ff6b35;
+    --glow4: #c77dff;
+    --text: #b0d4e8;
+    --text-dim: #3a6a80;
+    --accent: #00d4ff;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* 스캔라인 오버레이 */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 212, 255, 0.015) 2px,
+      rgba(0, 212, 255, 0.015) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* 그리드 배경 */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* 헤더 */
+  header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  .header-tag {
+    font-size: 11px;
+    letter-spacing: 0.4em;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+
+  h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(28px, 6vw, 52px);
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    line-height: 1.1;
+    background: linear-gradient(135deg, var(--glow) 0%, var(--glow2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: none;
+    filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.4));
+    margin-bottom: 8px;
+  }
+
+  .subtitle {
+    font-size: 13px;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+  }
+
+  .subtitle span {
+    color: var(--glow2);
+  }
+
+  /* 입력 영역 */
+  .input-section {
+    margin-bottom: 36px;
+  }
+
+  .input-label {
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    color: var(--glow);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .input-label::before {
+    content: '▶';
+    font-size: 8px;
+    animation: blink 1.2s step-end infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  .input-wrapper {
+    position: relative;
+  }
+
+  #hangulInput {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--glow);
+    color: #fff;
+    font-family: 'Noto Sans KR', sans-serif;
+    font-size: 22px;
+    padding: 20px 24px;
+    outline: none;
+    transition: all 0.25s;
+    caret-color: var(--glow);
+    letter-spacing: 0.05em;
+  }
+
+  #hangulInput::placeholder {
+    color: var(--text-dim);
+    font-size: 16px;
+  }
+
+  #hangulInput:focus {
+    border-color: var(--glow);
+    box-shadow: 0 0 0 1px var(--glow), 0 0 30px rgba(0,212,255,0.15), inset 0 0 20px rgba(0,212,255,0.04);
+  }
+
+  .char-count {
+    position: absolute;
+    right: 16px;
+    bottom: 12px;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+  }
+
+  .char-count span {
+    color: var(--glow);
+  }
+
+  /* 변환 버튼 */
+  .btn-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    font-weight: 700;
+    padding: 12px 28px;
+    border: none;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-primary {
+    background: var(--glow);
+    color: var(--bg);
+    clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+  }
+
+  .btn-primary:hover {
+    background: #fff;
+    box-shadow: 0 0 30px rgba(0,212,255,0.6);
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  }
+
+  .btn-secondary:hover {
+    border-color: var(--glow);
+    color: var(--glow);
+  }
+
+  /* 결과 그리드 */
+  .results {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  @media (max-width: 640px) {
+    .results { grid-template-columns: 1fr; }
+  }
+
+  .result-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+
+  .result-card:hover {
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+  }
+
+  .result-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .card-phone::before  { background: var(--glow); }
+  .card-unicode::before { background: var(--glow2); }
+  .card-binary::before  { background: var(--glow3); }
+  .card-hacker::before  { background: var(--glow4); }
+
+  .card-phone:hover  { border-color: rgba(0,212,255,0.3); box-shadow: 0 0 20px rgba(0,212,255,0.07); }
+  .card-unicode:hover { border-color: rgba(0,255,157,0.3); box-shadow: 0 0 20px rgba(0,255,157,0.07); }
+  .card-binary:hover  { border-color: rgba(255,107,53,0.3); box-shadow: 0 0 20px rgba(255,107,53,0.07); }
+  .card-hacker:hover  { border-color: rgba(199,125,255,0.3); box-shadow: 0 0 20px rgba(199,125,255,0.07); }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .card-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+
+  .card-phone  .card-title { color: var(--glow); }
+  .card-unicode .card-title { color: var(--glow2); }
+  .card-binary  .card-title { color: var(--glow3); }
+  .card-hacker  .card-title { color: var(--glow4); }
+
+  .card-icon {
+    font-size: 16px;
+    opacity: 0.7;
+  }
+
+  .card-body {
+    padding: 18px;
+    min-height: 110px;
+  }
+
+  .result-text {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    line-height: 1.9;
+    color: #d0e8f5;
+    word-break: break-all;
+    white-space: pre-wrap;
+  }
+
+  .result-text.placeholder {
+    color: var(--text-dim);
+    font-size: 12px;
+    font-style: italic;
+  }
+
+  .card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 18px 12px;
+    border-top: 1px solid rgba(255,255,255,0.04);
+  }
+
+  .char-info {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+  }
+
+  .copy-btn {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--text-dim);
+    background: none;
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+
+  .copy-btn:hover {
+    color: var(--glow);
+    border-color: var(--glow);
+  }
+
+  .copy-btn.copied {
+    color: var(--glow2);
+    border-color: var(--glow2);
+  }
+
+  /* 설명 패널 */
+  .info-section {
+    margin-top: 28px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--text-dim);
+    background: rgba(10, 21, 32, 0.6);
+    padding: 16px 20px;
+  }
+
+  .info-title {
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px 24px;
+  }
+
+  @media (max-width: 580px) { .info-grid { grid-template-columns: 1fr; } }
+
+  .info-item {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  .info-item strong {
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  .info-item.phone  strong { color: var(--glow); }
+  .info-item.unicode strong { color: var(--glow2); }
+  .info-item.binary  strong { color: var(--glow3); }
+  .info-item.hacker  strong { color: var(--glow4); }
+
+  /* 에러/공지 */
+  .notice {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: center;
+    margin-top: 32px;
+    letter-spacing: 0.1em;
+  }
+
+  .notice span { color: var(--glow2); }
+
+  /* 애니메이션 */
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .result-card {
+    animation: fadeSlideIn 0.35s ease both;
+  }
+  .result-card:nth-child(1) { animation-delay: 0.05s; }
+  .result-card:nth-child(2) { animation-delay: 0.10s; }
+  .result-card:nth-child(3) { animation-delay: 0.15s; }
+  .result-card:nth-child(4) { animation-delay: 0.20s; }
+
+  /* 해커 스타일 강조 */
+  .hacker-token {
+    display: inline-block;
+    padding: 0 2px;
+  }
+
+  .highlight-flash {
+    animation: flashGlow 0.4s ease;
+  }
+
+  @keyframes flashGlow {
+    0%   { background: rgba(0,212,255,0.2); }
+    100% { background: transparent; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="header-tag">// SYS_DECODE v2.7.1 \\</div>
+    <h1>한글 디코더</h1>
+    <div class="subtitle">HANGUL → <span>MULTI-FORMAT</span> CONVERTER</div>
+  </header>
+
+  <div class="input-section">
+    <div class="input-label">입력 버퍼</div>
+    <div class="input-wrapper">
+      <input
+        type="text"
+        id="hangulInput"
+        placeholder="한글을 입력하세요... (예: 안녕하세요)"
+        maxlength="30"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <div class="char-count"><span id="charCount">0</span>/30</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="convertAll()">⟫ 변환 실행</button>
+      <button class="btn btn-secondary" onclick="clearAll()">✕ 초기화</button>
+    </div>
+  </div>
+
+  <div class="results">
+    <!-- 전화 키패드 -->
+    <div class="result-card card-phone">
+      <div class="card-header">
+        <div class="card-title">📞 전화 키패드</div>
+        <div class="card-icon">☎</div>
+      </div>
+      <div class="card-body">
+        <div id="phoneResult" class="result-text placeholder">// 변환 대기 중...</div>
+      </div>
+      <div class="card-footer">
+        <div class="char-info" id="phoneInfo">—</div>
+        <button class="copy-btn" onclick="copyResult('phoneResult', this)">COPY</button>
+      </div>
+    </div>
+
+    <!-- 유니코드 -->
+    <div class="result-card card-unicode">
+      <div class="card-header">
+        <div class="card-title">🔣 유니코드</div>
+        <div class="card-icon">U+</div>
+      </div>
+      <div class="card-body">
+        <div id="unicodeResult" class="result-text placeholder">// 변환 대기 중...</div>
+      </div>
+      <div class="card-footer">
+        <div class="char-info" id="unicodeInfo">—</div>
+        <button class="copy-btn" onclick="copyResult('unicodeResult', this)">COPY</button>
+      </div>
+    </div>
+
+    <!-- 이진수 -->
+    <div class="result-card card-binary">
+      <div class="card-header">
+        <div class="card-title">⚙ UTF-8 이진수</div>
+        <div class="card-icon">01</div>
+      </div>
+      <div class="card-body">
+        <div id="binaryResult" class="result-text placeholder">// 변환 대기 중...</div>
+      </div>
+      <div class="card-footer">
+        <div class="char-info" id="binaryInfo">—</div>
+        <button class="copy-btn" onclick="copyResult('binaryResult', this)">COPY</button>
+      </div>
+    </div>
+
+    <!-- 해커식 -->
+    <div class="result-card card-hacker">
+      <div class="card-header">
+        <div class="card-title">☠ 해커 닉네임</div>
+        <div class="card-icon">l33t</div>
+      </div>
+      <div class="card-body">
+        <div id="hackerResult" class="result-text placeholder">// 변환 대기 중...</div>
+      </div>
+      <div class="card-footer">
+        <div class="char-info" id="hackerInfo">—</div>
+        <button class="copy-btn" onclick="copyResult('hackerResult', this)">COPY</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 설명 패널 -->
+  <div class="info-section">
+    <div class="info-title">// 변환 방식 설명</div>
+    <div class="info-grid">
+      <div class="info-item phone">
+        <strong>📞 전화 키패드</strong>
+        옛날 피처폰 문자 방식. ㄱ=2, ㄴ=4, ㄷ=4, ㄹ=5... 자음/모음별 버튼 횟수로 표현
+      </div>
+      <div class="info-item unicode">
+        <strong>🔣 유니코드 코드포인트</strong>
+        한글 음절 U+AC00 ~ U+D7A3 범위. 글자마다 고유 번호를 16진수로 표현
+      </div>
+      <div class="info-item binary">
+        <strong>⚙ UTF-8 실제 저장값</strong>
+        컴퓨터 메모리·파일에 실제로 저장되는 값. 한글 1글자 = 3바이트(24비트)
+      </div>
+      <div class="info-item hacker">
+        <strong>☠ 해커식 닉네임</strong>
+        영문자+숫자 혼용 변환. 유니코드 포인트를 특수문자·숫자 조합으로 변환
+      </div>
+    </div>
+  </div>
+
+  <div class="notice">
+    실시간 변환 지원 · <span>한글 음절·자모 모두 처리</span> · 비한글 문자도 병기
+  </div>
+
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// 1. 전화 키패드 변환 (피처폰 IM 방식)
+// ─────────────────────────────────────────────
+const PHONE_JAMO = {
+  'ㄱ':'2','ㄲ':'22','ㄴ':'44','ㄷ':'33','ㄸ':'333','ㄹ':'55',
+  'ㅁ':'66','ㅂ':'77','ㅃ':'777','ㅅ':'8','ㅆ':'88','ㅇ':'99',
+  'ㅈ':'00','ㅉ':'000','ㅊ':'006','ㅋ':'26','ㅌ':'36','ㅍ':'76','ㅎ':'96',
+  'ㅏ':'1','ㅐ':'14','ㅑ':'11','ㅒ':'114','ㅓ':'5','ㅔ':'54',
+  'ㅕ':'55','ㅖ':'554','ㅗ':'6','ㅘ':'61','ㅙ':'614','ㅚ':'64',
+  'ㅛ':'66','ㅜ':'7','ㅝ':'75','ㅞ':'754','ㅟ':'74','ㅠ':'77',
+  'ㅡ':'9','ㅢ':'94','ㅣ':'4'
+};
+
+const ONSET = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+const VOWEL = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
+const CODA  = ['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+
+function decomposeHangul(char) {
+  const code = char.charCodeAt(0) - 0xAC00;
+  if (code < 0 || code > 11171) return null;
+  const o = Math.floor(code / 588);
+  const v = Math.floor((code % 588) / 28);
+  const c = code % 28;
+  return { onset: ONSET[o], vowel: VOWEL[v], coda: CODA[c] };
+}
+
+function toPhone(text) {
+  let result = [];
+  for (const ch of text) {
+    const code = ch.charCodeAt(0);
+    if (code >= 0xAC00 && code <= 0xD7A3) {
+      const d = decomposeHangul(ch);
+      let parts = [];
+      parts.push(PHONE_JAMO[d.onset] || '?');
+      parts.push(PHONE_JAMO[d.vowel] || '?');
+      if (d.coda) parts.push(PHONE_JAMO[d.coda] || '?');
+      result.push(`[${parts.join('-')}]`);
+    } else if (code >= 0x3131 && code <= 0x3163) {
+      result.push(PHONE_JAMO[ch] || '?');
+    } else {
+      result.push(ch);
+    }
+  }
+  return result.join(' ');
+}
+
+// ─────────────────────────────────────────────
+// 2. 유니코드
+// ─────────────────────────────────────────────
+function toUnicode(text) {
+  return [...text].map(ch => {
+    const cp = ch.codePointAt(0);
+    const hex = cp.toString(16).toUpperCase().padStart(4,'0');
+    const dec = cp.toString(10);
+    return `${ch} → U+${hex} (${dec})`;
+  }).join('\n');
+}
+
+// ─────────────────────────────────────────────
+// 3. UTF-8 이진수
+// ─────────────────────────────────────────────
+function toUTF8Binary(text) {
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(text);
+  let lines = [];
+  let byteIdx = 0;
+  for (const ch of text) {
+    const chBytes = encoder.encode(ch);
+    const binStr = [...chBytes].map(b => b.toString(2).padStart(8,'0')).join(' ');
+    lines.push(`${ch} → ${binStr}`);
+  }
+  return lines.join('\n');
+}
+
+// ─────────────────────────────────────────────
+// 4. 해커식 닉네임 변환
+// ─────────────────────────────────────────────
+const HACKER_MAP = {
+  'ㄱ':'|<','ㄴ':'|\\','ㄷ':'|)','ㄹ':'|_','ㅁ':'[]','ㅂ':'|3',
+  'ㅅ':'$','ㅇ':'O','ㅈ':'#','ㅊ':'<|>','ㅋ':'|{','ㅌ':'|+',
+  'ㅍ':'|H|','ㅎ':'|-|','ㄲ':'|<|<','ㄸ':'|)|)','ㅆ':'$$','ㅃ':'|3|3',
+  'ㅏ':'/\\','ㅑ':'//\\','ㅓ':'\\/','ㅕ':'\\\\/','ㅗ':'v','ㅛ':'vv',
+  'ㅜ':'^','ㅠ':'^^','ㅡ':'—','ㅣ':'|','ㅐ':'|=','ㅔ':'3',
+  'ㅒ':'|==','ㅖ':'3=','ㅘ':'(/)','ㅙ':'(/=)','ㅚ':'O|',
+  'ㅝ':'(\\)','ㅞ':'(\\=)','ㅟ':'^|','ㅢ':'—|'
+};
+
+function toHacker(text) {
+  let result = [];
+  for (const ch of text) {
+    const code = ch.charCodeAt(0);
+    if (code >= 0xAC00 && code <= 0xD7A3) {
+      const d = decomposeHangul(ch);
+      let parts = [];
+      parts.push(HACKER_MAP[d.onset] || d.onset);
+      parts.push(HACKER_MAP[d.vowel] || d.vowel);
+      if (d.coda) parts.push(HACKER_MAP[d.coda] || d.coda);
+      result.push(parts.join(''));
+    } else if (code >= 0x3131 && code <= 0x3163) {
+      result.push(HACKER_MAP[ch] || ch);
+    } else {
+      // 영숫자 leet
+      const leet = {'a':'@','e':'3','i':'1','o':'0','s':'$','t':'7','l':'|','g':'9'};
+      result.push(leet[ch.toLowerCase()] || ch);
+    }
+  }
+  return result.join(' ');
+}
+
+// ─────────────────────────────────────────────
+// 메인 변환
+// ─────────────────────────────────────────────
+const input = document.getElementById('hangulInput');
+
+input.addEventListener('input', () => {
+  document.getElementById('charCount').textContent = [...input.value].length;
+});
+
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter') convertAll();
+});
+
+function setResult(id, infoId, text, placeholder, infoText) {
+  const el = document.getElementById(id);
+  const infoEl = document.getElementById(infoId);
+  if (!text.trim()) {
+    el.textContent = placeholder;
+    el.classList.add('placeholder');
+    infoEl.textContent = '—';
+  } else {
+    el.textContent = text;
+    el.classList.remove('placeholder');
+    el.classList.add('highlight-flash');
+    setTimeout(() => el.classList.remove('highlight-flash'), 400);
+    infoEl.textContent = infoText;
+  }
+}
+
+function convertAll() {
+  const text = input.value.trim();
+  if (!text) { clearAll(); return; }
+
+  const chars = [...text];
+  const hangulCount = chars.filter(c => {
+    const cp = c.charCodeAt(0);
+    return (cp >= 0xAC00 && cp <= 0xD7A3) || (cp >= 0x3131 && cp <= 0x3163);
+  }).length;
+
+  const byteLen = new TextEncoder().encode(text).length;
+
+  setResult('phoneResult', 'phoneInfo',
+    toPhone(text),
+    '// 변환 대기 중...',
+    `${chars.length}글자 · 키 입력으로 표현`
+  );
+
+  setResult('unicodeResult', 'unicodeInfo',
+    toUnicode(text),
+    '// 변환 대기 중...',
+    `${chars.length}개 코드포인트`
+  );
+
+  setResult('binaryResult', 'binaryInfo',
+    toUTF8Binary(text),
+    '// 변환 대기 중...',
+    `${byteLen} bytes · UTF-8 인코딩`
+  );
+
+  setResult('hackerResult', 'hackerInfo',
+    toHacker(text),
+    '// 변환 대기 중...',
+    `자모 분해 → 기호 치환`
+  );
+}
+
+function clearAll() {
+  input.value = '';
+  document.getElementById('charCount').textContent = '0';
+  ['phoneResult','unicodeResult','binaryResult','hackerResult'].forEach(id => {
+    const el = document.getElementById(id);
+    el.textContent = '// 변환 대기 중...';
+    el.classList.add('placeholder');
+  });
+  ['phoneInfo','unicodeInfo','binaryInfo','hackerInfo'].forEach(id => {
+    document.getElementById(id).textContent = '—';
+  });
+  input.focus();
+}
+
+async function copyResult(id, btn) {
+  const el = document.getElementById(id);
+  if (el.classList.contains('placeholder')) return;
+  try {
+    await navigator.clipboard.writeText(el.textContent);
+    btn.textContent = 'COPIED!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = 'COPY';
+      btn.classList.remove('copied');
+    }, 1800);
+  } catch {}
+}
+
+// 초기 포커스
+input.focus();
+</script>
+</body>
+</html>
